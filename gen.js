@@ -1,15 +1,38 @@
-import {fetchFile,nodefs, patchBuf, readTextContent, writeChanged} from 'ptk/nodebundle.cjs'
+import {fetchFile,nodefs, patchBuf, readTextContent, readTextLines, writeChanged} from 'ptk/nodebundle.cjs'
 import {FetchId} from './src/fetchid.js'
 import {Errata} from './src/errata.js'
 await nodefs;
 const srcdir='html/';
 const outdir='off/';
-const sutra=process.argv[2]||'t262';
+const sutras=(process.argv[2]||'t262,t263,t264,en,sd').split(',');
 
-const _idarr=FetchId[sutra];
 let  contentid='';
-const idmap=[];
+const idmap=[]
+let hasidarr=false,idarr=[];
+const idarrs={}
+
+const replaceId=line=>{
+    return line.replace(/@([a-zA-Z_\-\d]+)/g,(m,m1)=>{
+        const id=m1.replace('T0','T');
+        let  at=id.indexOf('-');
+        if (!~at) at=id.indexOf('D');
+        const sutra=id.slice(0,at);
+        if (!idarrs[sutra]) {
+            //console.log('unknown id',m1)
+            return '';
+        }
+        
+        const idx=idarrs[sutra].indexOf(m1);
+        if (~idx) {
+            return '@'+sutra+'-'+idx;
+        } else {
+            return '@!'+m1;
+        }
+        
+    })
+}
 const parseFile=fn=>{
+    
     let content=readTextContent(srcdir+fn+'.html')
     const errata=Errata[fn];
     if (errata) {
@@ -99,8 +122,14 @@ const parseFile=fn=>{
             if (!m) {
                 console.log(lines[i])
             }
+            if (hasidarr) {
+                lines[i]=replaceId(lines[i]);
+                idmap.push(contentid+'\t'+lines[i]);
+            } else {
+                idarr.push(contentid.trim());
+            }
             
-            idmap.push(contentid+'\t'+lines[i]);
+
             lines[i]='';
         }
     }
@@ -108,11 +137,32 @@ const parseFile=fn=>{
 }
 
 
-if (_idarr) {
-    const out=[];
-    _idarr.forEach(it=>out.push(parseFile(it[1])));
-    writeChanged(outdir+sutra+'.off',out.join('\n'),true)
-    writeChanged(outdir+sutra+'.tsv',idmap.join('\n'),true)
-} else {
-    console.log('invalid id',sutra)
+for (let i=0;i<sutras.length;i++) {
+    const sutra=sutras[i];
+    const idfn=outdir+sutra+'.txt';
+    if (fs.existsSync(idfn)){
+        hasidarr=true;
+        idarrs[sutra.toUpperCase()]=readTextLines(idfn);
+    }
+}
+
+for (let i=0;i<sutras.length;i++) {
+    const sutra=sutras[i];
+    const sutraidarr=FetchId[sutra];
+    idmap.length=0;
+    const idfn=outdir+sutra+'.txt';
+    idarr.length=0;
+
+    if (idarrs[sutra]){
+        hasidarr=true;   
+    }
+    if (sutraidarr) {
+        const out=[];
+        sutraidarr.forEach(it=>out.push(parseFile(it[1])));
+        writeChanged(outdir+sutra+'.off',out.join('\n'),true)
+        if (idmap.length) writeChanged(outdir+sutra+'.tsv',idmap.join('\n'),true)
+        if (idarr.length) writeChanged(idfn,idarr.join('\n'),true)
+    } else {
+        console.log('invalid id',sutra)
+    }
 }
