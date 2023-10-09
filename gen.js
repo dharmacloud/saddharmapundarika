@@ -1,0 +1,118 @@
+import {fetchFile,nodefs, patchBuf, readTextContent, writeChanged} from 'ptk/nodebundle.cjs'
+import {FetchId} from './src/fetchid.js'
+import {Errata} from './src/errata.js'
+await nodefs;
+const srcdir='html/';
+const outdir='off/';
+const sutra=process.argv[2]||'t262';
+
+const _idarr=FetchId[sutra];
+let  contentid='';
+const idmap=[];
+const parseFile=fn=>{
+    let content=readTextContent(srcdir+fn+'.html')
+    const errata=Errata[fn];
+    if (errata) {
+        content=patchBuf(content,errata,fn);
+    }
+    let at=content.indexOf('<hr>')
+    if (~at) content=content.slice(at+4);
+
+    at=content.indexOf('<body>')
+    if (~at) content=content.slice(at+6);
+
+    at=content.indexOf('</body>');
+    if (~at) content=content.slice(0,at);
+
+
+    content = content.replace(/([a-z]+)=\n/g,(m,m1)=>m1+'=') //有些 attribute 被\n 斷開
+    //remove line marker
+    content=content.replace(/<a name="[\-\da-d]+" class="[ a-z_\d]+" id="[\-\da-d]+">\[[\-\da-d]+\]<\/a>/g,'')
+    //content id
+    content=content.replace(/<span class="HL_Tag" name="([a-zA-Z,\d_\-]+)">([^<]+?)<\/span>/g,(m,id,lbl)=>{
+        return '^hl('+lbl+')';
+    })
+    //content id
+    content=content.replace(/<div class="content" id="([a-zA-Z\d_\-]+)">/g,(m,m1)=>{
+        return '\n^ck#'+m1+' ';
+    })
+   //內文, 冊頁碼
+    content=content.replace(/<p class="normal" id="([a-zA-Z\d_\-]+)">/g,(m,m1)=>{
+        return '\n^p#'+m1+' ';
+    })
+    content=content.replace(/<\/p>/g,'')
+    //異體字 app 不要
+
+
+    content=content.replace(/<span class="app">([^<]+?)<\/span>/g,(m,lbl)=>{
+        return lbl;
+    })
+
+    //term
+    content=content.replace(/<span class="term">([^<]+?)<\/span>/g,(m,lbl)=>{
+        return '^w('+lbl+')';
+    }) 
+
+    content=content.replace(/<table class="lg_table">/g,()=>{
+        return '^lg';
+    })
+    content=content.replace(/<\/table>\n/g,()=>{
+        return '';
+    })
+    content=content.replace(/<div class="head">\n?/g,'')
+    
+    content=content.replace(/<div class="subHtml">\n/g,'')
+    content=content.replace(/<\/div>\n/g,'')
+    content=content.replace(/<br class="lg_br">/g,'')
+    content=content.replace(/<div>/g,'')
+    content=content.replace(/<tr>/g,'')
+    content=content.replace(/<\/tr>/g,'')
+    content=content.replace(/<td>/g,'')
+    content=content.replace(/<\/td>/g,'')
+    
+
+    content=content.replace(/<div class="head_title">/g,'^h');
+    content=content.replace(/<a +class="link2oth" +id="([A-Z\d_\-]+)">([^<]+?)<\/a>/g,(m,id,lbl)=>{
+        return '@'+id;
+    })
+
+    content=content.replace(/<a +class="link2oth" +id="([a-zA-Z\d_\-]+)" name="[a-zA-Z\d_\-]+">([^<]+?)<\/a>/g,(m,id,lbl)=>{
+        return '@'+id;
+    })
+
+    const lines=content.split(/\n+/);
+
+    for (let i=0;i<lines.length;i++) {
+        const line=lines[i];
+        const at=line.indexOf('^ck');
+        if (~at) {
+            contentid=line.slice(at+4)+' ';
+        }
+        if (~line.indexOf('@')) {
+            if (!contentid) {
+                //missing id
+                if (fn=='t263-1') contentid='T0263D01_001';
+                else if (fn=='t264-1') contentid='T0264D01_001';
+            }
+            if (!contentid) throw "no content id"
+            const m=lines[i].match(/\^h【([^】]+)/);
+            if (!m) {
+                console.log(lines[i])
+            }
+            
+            idmap.push(contentid+'\t'+lines[i]);
+            lines[i]='';
+        }
+    }
+    return lines.join('\n');
+}
+
+
+if (_idarr) {
+    const out=[];
+    _idarr.forEach(it=>out.push(parseFile(it[1])));
+    writeChanged(outdir+sutra+'.off',out.join('\n'),true)
+    writeChanged(outdir+sutra+'.tsv',idmap.join('\n'),true)
+} else {
+    console.log('invalid id',sutra)
+}
