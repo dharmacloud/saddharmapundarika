@@ -4,6 +4,7 @@ import {Errata} from './src/errata.js'
 await nodefs;
 const srcdir='html/';
 const outdir='off/';
+const allsutras='t262,t263,t264,en,sd'.split(',')
 const sutras=(process.argv[2]||'t262,t263,t264,en,sd').split(',');
 
 let  contentid='';
@@ -17,17 +18,18 @@ const replaceId=line=>{
         let  at=id.indexOf('-');
         if (!~at) at=id.indexOf('D');
         const sutra=id.slice(0,at);
+
         if (!idarrs[sutra]) {
-            //console.log('unknown id',m1)
+            // console.log('unknown id',m1,sutra)
             return '';
         }
         
         const idx=idarrs[sutra].indexOf(m1);
-        if (~idx) {
-            return '@'+sutra+'-'+idx;
-        } else {
-            return '@!'+m1;
-        }
+        // if (~idx) {
+        //     return '\t@'+sutra+'-'+idx;
+        // } else {
+            return '\t@'+m1+'('+idx+')';
+        // }
         
     })
 }
@@ -50,7 +52,7 @@ const parseFile=fn=>{
 
     content = content.replace(/([a-z]+)=\n/g,(m,m1)=>m1+'=') //有些 attribute 被\n 斷開
     //remove line marker
-    content=content.replace(/<a name="[\-\da-d]+" class="[ a-z_\d]+" id="[\-\da-d]+">\[[\-\da-d]+\]<\/a>/g,'')
+    content=content.replace(/ ?<a name="[\-\da-d]+" class="[ a-z_\d]+" id="[\-\da-d]+">\[[\-\da-d]+\]<\/a>/g,'')
     //content id
     content=content.replace(/<span class="HL_Tag" name="([a-zA-Z,\d_\-]+)">([^<]+?)<\/span>/g,(m,id,lbl)=>{
         return '^hl('+lbl+')';
@@ -66,15 +68,21 @@ const parseFile=fn=>{
     content=content.replace(/<\/p>/g,'')
     //異體字 app 不要
 
-
-    content=content.replace(/<span class="app">([^<]+?)<\/span>/g,(m,lbl)=>{
+    //app
+    content=content.replace(/ ?<span class="app">([^<]*)<\/span> ?/g,(m,lbl)=>{
         return lbl;
-    })
+    }) 
 
     //term
-    content=content.replace(/<span class="term">([^<]+?)<\/span>/g,(m,lbl)=>{
+    content=content.replace(/<span class="term">([^<]*)<\/span>/g,(m,lbl)=>{
         return '^w('+lbl+')';
     }) 
+
+    //app
+    content=content.replace(/<span class="app">([^<]*)<\/span>/g,(m,lbl)=>{
+        return lbl;
+    }) 
+
 
     content=content.replace(/<table class="lg_table">/g,()=>{
         return '^lg';
@@ -84,7 +92,9 @@ const parseFile=fn=>{
     })
     content=content.replace(/<div class="head">\n?/g,'')
     
+    content=content.replace(/<div class="juanDesc">\n?/g,'')
     content=content.replace(/<div class="subHtml">\n/g,'')
+    content=content.replace(/<div class="byline">\n?/g,'')
     content=content.replace(/<\/div>\n/g,'')
     content=content.replace(/<br class="lg_br">/g,'')
     content=content.replace(/<div>/g,'')
@@ -92,10 +102,12 @@ const parseFile=fn=>{
     content=content.replace(/<\/tr>/g,'')
     content=content.replace(/<td>/g,'')
     content=content.replace(/<\/td>/g,'')
+
+
     
 
     content=content.replace(/<div class="head_title">/g,'^h');
-    content=content.replace(/<a +class="link2oth" +id="([A-Z\d_\-]+)">([^<]+?)<\/a>/g,(m,id,lbl)=>{
+    content=content.replace(/<a +class="link2oth" +id="([a-zA-Z\d_\-]+)">([^<]+?)<\/a>/g,(m,id,lbl)=>{
         return '@'+id;
     })
 
@@ -123,8 +135,8 @@ const parseFile=fn=>{
                 console.log(lines[i])
             }
             if (hasidarr) {
-                lines[i]=replaceId(lines[i]);
-                idmap.push(contentid+'\t'+lines[i]);
+                const l=replaceId(lines[i]);
+                idmap.push(contentid+'\t'+l);
             } else {
                 idarr.push(contentid.trim());
             }
@@ -137,12 +149,14 @@ const parseFile=fn=>{
 }
 
 
-for (let i=0;i<sutras.length;i++) {
-    const sutra=sutras[i];
+for (let i=0;i<allsutras.length;i++) {
+    const sutra=allsutras[i];
     const idfn=outdir+sutra+'.txt';
+    
     if (fs.existsSync(idfn)){
         hasidarr=true;
         idarrs[sutra.toUpperCase()]=readTextLines(idfn);
+        
     }
 }
 
